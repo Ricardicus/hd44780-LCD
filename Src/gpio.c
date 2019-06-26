@@ -27,7 +27,7 @@ void gpio_rcc_init(uint32_t base)
 }
 
 /* Terminating entry has pin set to a negative number */
-void init_leds(gpio_setting_t *settings)
+void init_gpio_pins(gpio_setting_t *settings)
 {
 	gpio_conf_t *gpio_conf;
 	int i = 0;

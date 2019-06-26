@@ -5,6 +5,12 @@
 #include <string.h>
 #include "cmsis_os.h"
 
+// LD5 : GPIOD 14
+// LD6 : GPIOD 15
+// LD4 : GPIOD 12
+// LD3 ; GPIOD 13
+// Clockwise motion: 13, 14, 15, 12
+
 #define BIT(x) ( (1<<(x)) )
 
 typedef struct gpio_conf_s {
@@ -69,10 +75,7 @@ typedef struct gpio_setting_t {
 #define RCC_HAL_AHB1ENR_GPIOJEN  BIT(9)
 #define RCC_HAL_AHB1ENR_GPIOKEN  BIT(10)
 
-#define LED_PATTERN_0            BIT(0)
-#define LED_PATTERN_1            BIT(1)
-
-void init_leds(gpio_setting_t *settings);
+void init_gpio_pins(gpio_setting_t *settings);
 void gpio_gp_pin_set(uint32_t base, uint32_t pin, int32_t val);
 int32_t gpio_gp_pin_get(uint32_t base, uint32_t pin);
 

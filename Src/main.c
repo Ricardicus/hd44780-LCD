@@ -25,6 +25,9 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "gpio.h"
+#include "hd44780u.h"
+
+
 
 /* USER CODE END Includes */
 
@@ -35,6 +38,11 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+
+#define LED_PATTERN_0            BIT(0)
+#define LED_PATTERN_1            BIT(1)
+#define LED_PATTERN_2            BIT(2)
+#define LED_PATTERN_3            BIT(3)
 
 /* USER CODE END PD */
 
@@ -161,24 +169,186 @@ void udpate_leds_1()
 
 }
 
+void udpate_leds_2()
+{
+  static int count = 0;
+
+  switch ( count ) {
+  case 0:
+    gpio_gp_pin_set(GPIOD_ADDR, 13, 1);
+    gpio_gp_pin_set(GPIOD_ADDR, 14, 0);
+    gpio_gp_pin_set(GPIOD_ADDR, 15, 0);
+    gpio_gp_pin_set(GPIOD_ADDR, 12, 0);
+    count++;
+    break;
+  case 1:
+    count++;
+    break;
+  case 2:
+    gpio_gp_pin_set(GPIOD_ADDR, 13, 0);
+    gpio_gp_pin_set(GPIOD_ADDR, 14, 1);
+    gpio_gp_pin_set(GPIOD_ADDR, 15, 0);
+    gpio_gp_pin_set(GPIOD_ADDR, 12, 0);
+    count++;
+    break;
+  case 3:
+    count++;
+    break;
+  case 4:
+    gpio_gp_pin_set(GPIOD_ADDR, 13, 0);
+    gpio_gp_pin_set(GPIOD_ADDR, 14, 0);
+    gpio_gp_pin_set(GPIOD_ADDR, 15, 1);
+    gpio_gp_pin_set(GPIOD_ADDR, 12, 0);
+    count++;
+    break;
+  case 5:
+    count++;
+    break;
+  case 6:
+    gpio_gp_pin_set(GPIOD_ADDR, 13, 0);
+    gpio_gp_pin_set(GPIOD_ADDR, 14, 0);
+    gpio_gp_pin_set(GPIOD_ADDR, 15, 0);
+    gpio_gp_pin_set(GPIOD_ADDR, 12, 1);
+    count++;
+    break;
+  case 7:
+    count = 0;
+    break;
+  default:
+    count = 0;
+  }
+
+}
+
+void udpate_leds_3()
+{
+  static int count = 0;
+
+  switch ( count ) {
+  case 0:
+    gpio_gp_pin_set(GPIOD_ADDR, 13, 0);
+    gpio_gp_pin_set(GPIOD_ADDR, 14, 0);
+    gpio_gp_pin_set(GPIOD_ADDR, 15, 0);
+    gpio_gp_pin_set(GPIOD_ADDR, 12, 1);
+    count++;
+    break;
+  case 1:
+    count++;
+    break;
+  case 2:
+    gpio_gp_pin_set(GPIOD_ADDR, 13, 0);
+    gpio_gp_pin_set(GPIOD_ADDR, 14, 0);
+    gpio_gp_pin_set(GPIOD_ADDR, 15, 1);
+    gpio_gp_pin_set(GPIOD_ADDR, 12, 0);
+    count++;
+    break;
+  case 3:
+    count++;
+    break;
+  case 4:
+    gpio_gp_pin_set(GPIOD_ADDR, 13, 0);
+    gpio_gp_pin_set(GPIOD_ADDR, 14, 1);
+    gpio_gp_pin_set(GPIOD_ADDR, 15, 0);
+    gpio_gp_pin_set(GPIOD_ADDR, 12, 0);
+    count++;
+    break;
+  case 5:
+    count++;
+    break;
+  case 6:
+    gpio_gp_pin_set(GPIOD_ADDR, 13, 1);
+    gpio_gp_pin_set(GPIOD_ADDR, 14, 0);
+    gpio_gp_pin_set(GPIOD_ADDR, 15, 0);
+    gpio_gp_pin_set(GPIOD_ADDR, 12, 0);
+    count++;
+    break;
+  case 7:
+    count = 0;
+    break;
+  default:
+    count = 0;
+  }
+
+}
+
 /* Task to be created. */
 void Listener( void * pvParameters )
 {
   /* The parameter value is expected to be 1 as 1 is passed in the
   pvParameters value in the call to xTaskCreate() below. */
-  const TickType_t xDelay = 5000 / portTICK_PERIOD_MS;
+  TickType_t xDelay = 100 / portTICK_PERIOD_MS;
   EventGroupHandle_t xEventGroup = (EventGroupHandle_t) pvParameters;
 
+  int prev_led_pattern = -1;
+  int led_pattern = LED_PATTERN_0;
+
+  // Await button press
   while ( 1 ) {
     vTaskDelay(xDelay);
 
-    xEventGroupSetBits(xEventGroup, LED_PATTERN_1);
+    if ( gpio_gp_pin_get(GPIOB_ADDR, 5) ) {
+      led_pattern = LED_PATTERN_1;
+    } else {
+      led_pattern = LED_PATTERN_0;
+    }
 
-    vTaskDelay(xDelay);
+    if ( prev_led_pattern != led_pattern ) {
+      xEventGroupSetBits(xEventGroup, led_pattern);
+      prev_led_pattern = led_pattern;
+    }
 
-    xEventGroupSetBits(xEventGroup, LED_PATTERN_0);
+    if ( led_pattern == LED_PATTERN_1 )
+      break;
   }
 
+  // Program the HD44780u
+
+  xDelay = 500 / portTICK_PERIOD_MS; // Interval between instructions
+
+  // Set to 4 bit operation
+  hd44780u_4bit_instruct(0, 0, 0, 1, 0);
+  vTaskDelay(xDelay);
+
+  // Set 4 bit operation and select 1-line display and 5x8 char font
+  hd44780u_4bit_instruct(0, 0, 0, 1, 0);
+  vTaskDelay(xDelay);
+
+  hd44780u_4bit_instruct(0, 0, 0, 0, 0);
+  vTaskDelay(xDelay);
+
+  // Turn on display and cursor
+  hd44780u_4bit_instruct(0, 0, 0, 0, 0);
+  vTaskDelay(xDelay);
+  hd44780u_4bit_instruct(0, 1, 1, 1, 0);
+  vTaskDelay(xDelay);
+
+  // Set mode to increment the address by one and to shift the cursor to the right after write
+  hd44780u_4bit_instruct(0, 0, 0, 0, 0);
+  vTaskDelay(xDelay);
+  hd44780u_4bit_instruct(0, 0, 1, 1, 0);
+  vTaskDelay(xDelay);
+
+  // Writing a message!
+  hd44780u_4bit_write("Rickard <3");
+
+  xDelay = 100 / portTICK_PERIOD_MS;
+
+  led_pattern = LED_PATTERN_0;
+  while ( 1 ) {
+    vTaskDelay(xDelay);
+
+    if ( gpio_gp_pin_get(GPIOB_ADDR, 5) ) {
+      led_pattern = LED_PATTERN_2;
+    } else {
+      led_pattern = LED_PATTERN_3;
+    }
+
+    if ( prev_led_pattern != led_pattern ) {
+      xEventGroupSetBits(xEventGroup, led_pattern);
+      prev_led_pattern = led_pattern;
+    }
+
+  }
 }
 
 /* Task to be created. */
@@ -203,7 +373,7 @@ void LEDBlink( void * pvParameters )
     the event group.  Clear the bits before exiting. */
     uxBits = xEventGroupWaitBits(
       xEventGroup,   /* The event group being tested. */
-      LED_PATTERN_0 | LED_PATTERN_1, /* The bits within the event group to wait for. */
+      LED_PATTERN_0 | LED_PATTERN_1 | LED_PATTERN_2 | LED_PATTERN_3 , /* The bits within the event group to wait for. */
       pdTRUE,        /* BIT_0 & BIT_4 should be cleared before returning. */
       pdFALSE,       /* Don't wait for both bits, either bit will do. */
       xTicksToWait );/* Wait a maximum of 100ms for either bit to be set. */
@@ -212,6 +382,10 @@ void LEDBlink( void * pvParameters )
       led_pattern = LED_PATTERN_0;
     } else if ( uxBits & LED_PATTERN_1 ) {
       led_pattern = LED_PATTERN_1;
+    } else if ( uxBits & LED_PATTERN_2 ) {
+      led_pattern = LED_PATTERN_2;
+    } else if ( uxBits & LED_PATTERN_3 ) {
+      led_pattern = LED_PATTERN_3;
     }
 
     switch( led_pattern ) {
@@ -222,6 +396,14 @@ void LEDBlink( void * pvParameters )
     case LED_PATTERN_1:
     udpate_leds_1();
     delay = 80000;
+    break;
+    case LED_PATTERN_2:
+    udpate_leds_2();
+    delay = 100000;
+    break;
+    case LED_PATTERN_3:
+    udpate_leds_3();
+    delay = 100000;
     break;
     default:
     break;
@@ -271,6 +453,7 @@ int spawnGPIOApp( void )
 
   gpio_setting_t settings[] =
   {
+    // For the blinking
     {
       .pin = 12,
       .base = GPIOD_ADDR,
@@ -303,6 +486,7 @@ int spawnGPIOApp( void )
       .speed = GPIO_SETTING_SPEED_LOW,
       .pupdr = GPIO_SETTING_PUPDR_NO_PULL_UP
     },
+    // For the button
     {
       .pin = 5,
       .base = GPIOB_ADDR,
@@ -311,13 +495,123 @@ int spawnGPIOApp( void )
       .speed = GPIO_SETTING_SPEED_LOW,
       .pupdr = GPIO_SETTING_PUPDR_NO_PULL_UP
     },
+    // for the hd44780u LCD display
+    {
+      // PD0 -> DB7
+      .pin = 0,
+      .base = GPIOD_ADDR,
+      .mode = GPIO_SETTING_MODE_GP_OUT,
+      .type = GPIO_SETTING_TYPE_PUSH_PULL,
+      .speed = GPIO_SETTING_SPEED_LOW,
+      .pupdr = GPIO_SETTING_PUPDR_NO_PULL_UP     
+    },
+    {
+      // PD2 -> DB6
+      .pin = 2,
+      .base = GPIOD_ADDR,
+      .mode = GPIO_SETTING_MODE_GP_OUT,
+      .type = GPIO_SETTING_TYPE_PUSH_PULL,
+      .speed = GPIO_SETTING_SPEED_LOW,
+      .pupdr = GPIO_SETTING_PUPDR_NO_PULL_UP     
+    },
+    {
+      // PD4 -> DB5
+      .pin = 4,
+      .base = GPIOD_ADDR,
+      .mode = GPIO_SETTING_MODE_GP_OUT,
+      .type = GPIO_SETTING_TYPE_PUSH_PULL,
+      .speed = GPIO_SETTING_SPEED_LOW,
+      .pupdr = GPIO_SETTING_PUPDR_NO_PULL_UP     
+    },
+    {
+      // PD6 -> DB4
+      .pin = 6,
+      .base = GPIOD_ADDR,
+      .mode = GPIO_SETTING_MODE_GP_OUT,
+      .type = GPIO_SETTING_TYPE_PUSH_PULL,
+      .speed = GPIO_SETTING_SPEED_LOW,
+      .pupdr = GPIO_SETTING_PUPDR_NO_PULL_UP     
+    },
+    {
+      // PC9 -> E
+      .pin = 9,
+      .base = GPIOC_ADDR,
+      .mode = GPIO_SETTING_MODE_GP_OUT,
+      .type = GPIO_SETTING_TYPE_PUSH_PULL,
+      .speed = GPIO_SETTING_SPEED_LOW,
+      .pupdr = GPIO_SETTING_PUPDR_NO_PULL_UP    
+    },
+    {
+      // PC7 -> RS
+      .pin = 7,
+      .base = GPIOC_ADDR,
+      .mode = GPIO_SETTING_MODE_GP_OUT,
+      .type = GPIO_SETTING_TYPE_PUSH_PULL,
+      .speed = GPIO_SETTING_SPEED_LOW,
+      .pupdr = GPIO_SETTING_PUPDR_NO_PULL_UP  
+    },
     // Terminating entry
     { 
       .pin = -1
     }
-    };
+  };
 
-  init_leds(settings);
+  // Init the GPIO pins
+  init_gpio_pins(settings);
+
+  hd44780u_config_t hd447_settings[] =
+  {
+    {
+      .type = HD44780U_DB4,
+      .pin = {
+        .pin = 6,
+        .base = GPIOD_ADDR
+      }
+    },
+    {
+      .type = HD44780U_DB5,
+      .pin = {
+        .pin = 4,
+        .base = GPIOD_ADDR
+      }
+    },
+    {
+      .type = HD44780U_DB6,
+      .pin = {
+        .pin = 2,
+        .base = GPIOD_ADDR
+      }
+    },
+    {
+      .type = HD44780U_DB7,
+      .pin = {
+        .pin = 0,
+        .base = GPIOD_ADDR
+      }
+    },
+    {
+      .type = HD44780U_E,
+      .pin = {
+        .pin = 9,
+        .base = GPIOC_ADDR
+      }
+    },
+    {
+      .type = HD44780U_RS,
+      .pin = {
+        .pin = 7,
+        .base = GPIOC_ADDR
+      }
+    },
+    // Terminating entry
+    {
+      .type = -1
+    }
+
+  };
+
+  // Init the hd44780u interface
+  hd44780u_init_4bit_op(hd447_settings);
 
   /* Create the task, storing the handle. */
   xReturned = xTaskCreate(
@@ -332,13 +626,13 @@ int spawnGPIOApp( void )
   {
     /* It worked! */
 
-  xReturned = xTaskCreate(
-    Listener,        /* Function that implements the task. */
-    "LED blinker alterer!",   /* Text name for the task. */
-    128,              /* Stack size in words, not bytes. */
-    xCreatedEventGroup,   /* Parameter passed into the task. */
-    tskIDLE_PRIORITY, /* Priority at which the task is created. */
-    &xHandle );       /* Used to pass out the created task's handle. */
+    xReturned = xTaskCreate(
+      Listener,        /* Function that implements the task. */
+      "LED blinker alterer!",   /* Text name for the task. */
+      128,              /* Stack size in words, not bytes. */
+      xCreatedEventGroup,   /* Parameter passed into the task. */
+      tskIDLE_PRIORITY, /* Priority at which the task is created. */
+      &xHandle );       /* Used to pass out the created task's handle. */
 
 
     return 0;
