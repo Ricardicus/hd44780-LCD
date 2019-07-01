@@ -303,7 +303,7 @@ void Listener( void * pvParameters )
 
   // Program the HD44780u
 
-  xDelay = 500 / portTICK_PERIOD_MS; // Interval between instructions
+  xDelay = 200 / portTICK_PERIOD_MS; // Interval between instructions
 
   // Set to 4 bit operation
   hd44780u_4bit_instruct(0, 0, 0, 1, 0);
@@ -328,8 +328,14 @@ void Listener( void * pvParameters )
   hd44780u_4bit_instruct(0, 0, 1, 1, 0);
   vTaskDelay(xDelay);
 
+  // Return home
+  hd44780u_4bit_instruct(0, 0, 0, 0, 0);
+  vTaskDelay(xDelay);
+  hd44780u_4bit_instruct(0, 0, 0, 1, 0);
+  vTaskDelay(xDelay);
+
   // Writing a message!
-  hd44780u_4bit_write("Rickard <3");
+  hd44780u_4bit_write("Rickard <3 är bra!");
 
   xDelay = 100 / portTICK_PERIOD_MS;
 
@@ -347,6 +353,9 @@ void Listener( void * pvParameters )
       xEventGroupSetBits(xEventGroup, led_pattern);
       prev_led_pattern = led_pattern;
     }
+
+//    vTaskDelay(xDelay);
+    hd44780u_4bit_shift_left();
 
   }
 }

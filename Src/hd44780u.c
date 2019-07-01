@@ -41,6 +41,7 @@ void hd44780u_init_4bit_op(hd44780u_config_t *configs)
 void hd44780u_4bit_write(const char * message) 
 {
 	const char *c = message;
+	static int prev = 0;
 	TickType_t xDelay = 100 / portTICK_PERIOD_MS;
 
 	while ( *c ) {
@@ -219,14 +220,63 @@ void hd44780u_4bit_write(const char * message)
 			hd44780u_4bit_instruct(1, 0, 0, 1, 0);
 			hd44780u_4bit_instruct(1, 0, 0, 0, 0);
 			break;
+			case '!':
+			hd44780u_4bit_instruct(1, 0, 0, 1, 0);
+			hd44780u_4bit_instruct(1, 0, 0, 0, 1);
+			break;
+			case '?':
+			hd44780u_4bit_instruct(1, 0, 0, 1, 1);
+			hd44780u_4bit_instruct(1, 1, 1, 1, 1);
+			break;
+			case 165:
+			case 133:
+			if ( prev == 195 ) {
+				hd44780u_4bit_instruct(1, 0, 1, 1, 0);
+				hd44780u_4bit_instruct(1, 0, 0, 0, 1);
+			}
+			break;
+			case 164:
+			case 132:
+			if ( prev == 195 ) {
+				hd44780u_4bit_instruct(1, 1, 1, 1, 0);
+				hd44780u_4bit_instruct(1, 0, 0, 0, 1);
+			}
+			break;
+			case 182:
+			case 150:
+			if ( prev == 195 ) {
+				hd44780u_4bit_instruct(1, 1, 1, 1, 0);
+				hd44780u_4bit_instruct(1, 1, 1, 1, 1);
+			}
+			break;
 			default:
 			break;
 		}
+
+		prev = *c;
 
 		vTaskDelay(xDelay);
 		++c;
 	}
 
+}
+
+void hd44780u_4bit_shift_left()
+{
+	TickType_t xDelay = 500 / portTICK_PERIOD_MS;
+	hd44780u_4bit_instruct(0, 0, 0, 0, 1);
+	vTaskDelay(xDelay);
+	hd44780u_4bit_instruct(0, 1, 0, 0, 0);
+	vTaskDelay(xDelay);
+}
+
+void hd44780u_4bit_shift_right()
+{
+	TickType_t xDelay = 500 / portTICK_PERIOD_MS;
+	hd44780u_4bit_instruct(0, 0, 0, 0, 1);
+	vTaskDelay(xDelay);
+	hd44780u_4bit_instruct(0, 1, 1, 0, 0);
+	vTaskDelay(xDelay);
 }
 
 void hd44780u_4bit_instruct(int rs, int db7, int db6, int db5, int db4)

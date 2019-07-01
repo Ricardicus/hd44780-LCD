@@ -24,7 +24,8 @@ typedef struct hd44780u_config {
 
 void hd44780u_init_4bit_op(hd44780u_config_t *configs);
 void hd44780u_4bit_write(const char * message);
-
+void hd44780u_4bit_shift_left();
+void hd44780u_4bit_shift_right();
 void hd44780u_4bit_instruct(int rs, int db7, int db6, int db5, int db4);
 
 #endif 
