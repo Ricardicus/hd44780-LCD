@@ -4,6 +4,8 @@
 * This interface only works for one HD44780u display
 */
 
+static void hd44780u_4bit_instruct(int rs, int db7, int db6, int db5, int db4);
+
 static hd44780u_config_t configuration[6];
 static TickType_t xDelay;
 static int activated = 0;

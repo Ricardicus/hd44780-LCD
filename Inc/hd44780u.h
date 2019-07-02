@@ -30,6 +30,5 @@ void hd44780u_4bit_shift_display_left();
 void hd44780u_4bit_shift_display_right();
 void hd44780u_4bit_shift_cursor_left();
 void hd44780u_4bit_shift_cursor_right();
-static void hd44780u_4bit_instruct(int rs, int db7, int db6, int db5, int db4);
 
 #endif 
