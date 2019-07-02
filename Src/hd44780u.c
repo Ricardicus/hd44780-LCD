@@ -8,14 +8,31 @@ static void hd44780u_4bit_instruct(int rs, int db7, int db6, int db5, int db4);
 
 static hd44780u_config_t configuration[6];
 static TickType_t xDelay;
-static int activated = 0;
+static volatile int activated = 0;
+static volatile int message_written = 0;
+
+static SemaphoreHandle_t hd44780u_mux;
+
+static unsigned int busy_wait(unsigned int delay)
+{
+	unsigned int d = 0;
+	while ( d < delay )
+		++d;
+	return d;
+}
 
 int hd44780u_init_4bit_op(hd44780u_config_t *configs)
 {
 	hd44780u_config_t config = configs[0];
 	int i = 0;
+	unsigned int delay = 100000;
 
-	for (; i < sizeof(configuration) / sizeof(*configuration); i++ ) {
+	hd44780u_mux = xSemaphoreCreateBinary();
+
+	if ( hd44780u_mux == NULL )
+		return 1;
+
+	for (; i < 6; i++ ) {
 		configuration[i].type = -1;
 	}
 
@@ -50,7 +67,7 @@ int hd44780u_init_4bit_op(hd44780u_config_t *configs)
 	}
 
 	i = 0;
-	for (; i < sizeof(configuration) / sizeof(*configuration); i++ ) {
+	for (; i < 6; i++ ) {
 		if ( -1 == configuration[i].type ) {
 			return 1;
 		}
@@ -61,32 +78,36 @@ int hd44780u_init_4bit_op(hd44780u_config_t *configs)
 
 	// Set to 4 bit operation
 	hd44780u_4bit_instruct(0, 0, 0, 1, 0);
-	vTaskDelay(xDelay);
+	busy_wait(delay);
 
 	// Set 4 bit operation and select 1-line display and 5x8 char font
 	hd44780u_4bit_instruct(0, 0, 0, 1, 0);
-	vTaskDelay(xDelay);
+	busy_wait(delay);
 
 	hd44780u_4bit_instruct(0, 0, 0, 0, 0);
-	vTaskDelay(xDelay);
+	busy_wait(delay);
 
 	// Turn on display and cursor
 	hd44780u_4bit_instruct(0, 0, 0, 0, 0);
-	vTaskDelay(xDelay);
+	busy_wait(delay);
 	hd44780u_4bit_instruct(0, 1, 1, 1, 0);
-	vTaskDelay(xDelay);
+	busy_wait(delay);
 
 	// Set mode to increment the address by one and to shift the cursor to the right after write
 	hd44780u_4bit_instruct(0, 0, 0, 0, 0);
-	vTaskDelay(xDelay);
+	busy_wait(delay);
 	hd44780u_4bit_instruct(0, 0, 1, 1, 0);
-	vTaskDelay(xDelay);
+	busy_wait(delay);
 
 	// Return home
 	hd44780u_4bit_instruct(0, 0, 0, 0, 0);
-	vTaskDelay(xDelay);
+	busy_wait(delay);
 	hd44780u_4bit_instruct(0, 0, 0, 1, 0);
-	vTaskDelay(xDelay);
+	busy_wait(delay);
+
+	xSemaphoreGive(hd44780u_mux);
+
+	activated = 1;
 
 	return 0;
 
@@ -94,282 +115,377 @@ int hd44780u_init_4bit_op(hd44780u_config_t *configs)
 
 void hd44780u_4bit_return_home()
 {
-  // Return home
-  hd44780u_4bit_instruct(0, 0, 0, 0, 0);
-  vTaskDelay(xDelay);
-  hd44780u_4bit_instruct(0, 0, 0, 1, 0);
-  vTaskDelay(xDelay);
+	if (! activated ) 
+		return;
+	// Return home
+	hd44780u_4bit_instruct(0, 0, 0, 0, 0);
+	vTaskDelay(xDelay);
+	hd44780u_4bit_instruct(0, 0, 0, 1, 0);
+	vTaskDelay(xDelay);
+
 }
 
 void hd44780u_4bit_write(const char * message) 
 {
 	const char *c = message;
 	static int prev = 0;
+	static unsigned int chars_limit = 0;
+	unsigned int chars_written = 0;
+	unsigned int q = 0;
+	unsigned int n = 0;
 
-	if ( activated ) 
+	if (! activated ) 
+		return;
+
+	if ( xSemaphoreTake( hd44780u_mux, portMAX_DELAY ) == pdTRUE ) {
+
 		hd44780u_4bit_return_home();
 
-	while ( *c ) {
-		switch(*c) {
-			case 'a':
-			case 'A':
-			hd44780u_4bit_instruct(1, 0, 1, 0, 0);
-			hd44780u_4bit_instruct(1, 0, 0, 0, 1);
-			break;
-			case 'b':
-			case 'B':
-			hd44780u_4bit_instruct(1, 0, 1, 0, 0);
-			hd44780u_4bit_instruct(1, 0, 0, 1, 0);
-			break;
-			case 'c':
-			case 'C':
-			hd44780u_4bit_instruct(1, 0, 1, 0, 0);
-			hd44780u_4bit_instruct(1, 0, 0, 1, 1);
-			break;
-			case 'd':
-			case 'D':
-			hd44780u_4bit_instruct(1, 0, 1, 0, 0);
-			hd44780u_4bit_instruct(1, 0, 1, 0, 0);
-			break;
-			case 'e':
-			case 'E':
-			hd44780u_4bit_instruct(1, 0, 1, 0, 0);
-			hd44780u_4bit_instruct(1, 0, 1, 0, 1);
-			break;
-			case 'f':
-			case 'F':
-			hd44780u_4bit_instruct(1, 0, 1, 0, 0);
-			hd44780u_4bit_instruct(1, 0, 1, 1, 0);
-			break;
-			case 'g':
-			case 'G':
-			hd44780u_4bit_instruct(1, 0, 1, 0, 0);
-			hd44780u_4bit_instruct(1, 0, 1, 1, 1);
-			break;
-			case 'h':
-			case 'H':
-			hd44780u_4bit_instruct(1, 0, 1, 0, 0);
-			hd44780u_4bit_instruct(1, 1, 0, 0, 0);
-			break;
-			case 'i':
-			case 'I':
-			hd44780u_4bit_instruct(1, 0, 1, 0, 0);
-			hd44780u_4bit_instruct(1, 1, 0, 0, 1);
-			break;
-			case 'j':
-			case 'J':
-			hd44780u_4bit_instruct(1, 0, 1, 0, 0);
-			hd44780u_4bit_instruct(1, 1, 0, 1, 0);
-			break;
-			case 'k':
-			case 'K':
-			hd44780u_4bit_instruct(1, 0, 1, 0, 0);
-			hd44780u_4bit_instruct(1, 1, 0, 1, 1);
-			break;
-			case 'l':
-			case 'L':
-			hd44780u_4bit_instruct(1, 0, 1, 0, 0);
-			hd44780u_4bit_instruct(1, 1, 1, 0, 0);
-			break;
-			case 'm':
-			case 'M':
-			hd44780u_4bit_instruct(1, 0, 1, 0, 1);
-			hd44780u_4bit_instruct(1, 1, 1, 0, 1);
-			break;
-			case 'n':
-			case 'N':
-			hd44780u_4bit_instruct(1, 0, 1, 0, 0);
-			hd44780u_4bit_instruct(1, 1, 1, 1, 0);
-			break;
-			case 'o':
-			case 'O':
-			hd44780u_4bit_instruct(1, 0, 1, 0, 0);
-			hd44780u_4bit_instruct(1, 1, 1, 1, 1);
-			break;
-			case 'p':
-			case 'P':
-			hd44780u_4bit_instruct(1, 0, 1, 0, 1);
-			hd44780u_4bit_instruct(1, 0, 0, 0, 0);
-			break;
-			case 'q':
-			case 'Q':
-			hd44780u_4bit_instruct(1, 0, 1, 0, 1);
-			hd44780u_4bit_instruct(1, 0, 0, 0, 1);
-			break;
-			case 'r':
-			case 'R':
-			hd44780u_4bit_instruct(1, 0, 1, 0, 1);
-			hd44780u_4bit_instruct(1, 0, 0, 1, 0);
-			break;
-			case 's':
-			case 'S':
-			hd44780u_4bit_instruct(1, 0, 1, 0, 1);
-			hd44780u_4bit_instruct(1, 0, 0, 1, 1);
-			break;	
-			case 't':
-			case 'T':
-			hd44780u_4bit_instruct(1, 0, 1, 0, 1);
-			hd44780u_4bit_instruct(1, 0, 1, 0, 0);
-			break;
-			case 'u':
-			case 'U':
-			hd44780u_4bit_instruct(1, 0, 1, 0, 1);
-			hd44780u_4bit_instruct(1, 0, 1, 0, 1);
-			break;
-			case 'v':
-			case 'V':
-			hd44780u_4bit_instruct(1, 0, 1, 0, 1);
-			hd44780u_4bit_instruct(1, 0, 1, 1, 0);
-			break;
-			case 'w':
-			case 'W':
-			hd44780u_4bit_instruct(1, 0, 1, 0, 1);
-			hd44780u_4bit_instruct(1, 0, 1, 1, 1);
-			break;
-			case 'x':
-			case 'X':
-			hd44780u_4bit_instruct(1, 0, 1, 0, 1);
-			hd44780u_4bit_instruct(1, 1, 0, 0, 0);
-			break;
-			case 'y':
-			case 'Y':
-			hd44780u_4bit_instruct(1, 0, 1, 0, 1);
-			hd44780u_4bit_instruct(1, 1, 0, 0, 1);
-			break;
-			case 'z':
-			case 'Z':
-			hd44780u_4bit_instruct(1, 0, 1, 0, 1);
-			hd44780u_4bit_instruct(1, 1, 0, 1, 0);
-			break;
-			case '<':
-			hd44780u_4bit_instruct(1, 0, 0, 1, 1);
-			hd44780u_4bit_instruct(1, 1, 1, 0, 0);
-			break;
-			case '1':
-			hd44780u_4bit_instruct(1, 0, 0, 1, 1);
-			hd44780u_4bit_instruct(1, 0, 0, 0, 1);
-			break;
-			case '2':
-			hd44780u_4bit_instruct(1, 0, 0, 1, 1);
-			hd44780u_4bit_instruct(1, 0, 0, 1, 0);
-			break;
-			case '3':
-			hd44780u_4bit_instruct(1, 0, 0, 1, 1);
-			hd44780u_4bit_instruct(1, 0, 0, 1, 1);
-			break;
-			case '4':
-			hd44780u_4bit_instruct(1, 0, 0, 1, 1);
-			hd44780u_4bit_instruct(1, 0, 1, 0, 0);
-			break;
-			case '5':
-			hd44780u_4bit_instruct(1, 0, 0, 1, 1);
-			hd44780u_4bit_instruct(1, 0, 1, 0, 1);
-			break;
-			case '6':
-			hd44780u_4bit_instruct(1, 0, 0, 1, 1);
-			hd44780u_4bit_instruct(1, 0, 1, 1, 0);
-			break;
-			case '7':
-			hd44780u_4bit_instruct(1, 0, 0, 1, 1);
-			hd44780u_4bit_instruct(1, 0, 1, 1, 1);
-			break;
-			case '8':
-			hd44780u_4bit_instruct(1, 0, 0, 1, 1);
-			hd44780u_4bit_instruct(1, 1, 0, 0, 0);
-			break;
-			case '9':
-			hd44780u_4bit_instruct(1, 0, 0, 1, 1);
-			hd44780u_4bit_instruct(1, 1, 0, 0, 1);
-			break;
-			case ' ':
-			hd44780u_4bit_instruct(1, 0, 0, 1, 0);
-			hd44780u_4bit_instruct(1, 0, 0, 0, 0);
-			break;
-			case '!':
-			hd44780u_4bit_instruct(1, 0, 0, 1, 0);
-			hd44780u_4bit_instruct(1, 0, 0, 0, 1);
-			break;
-			case '?':
-			hd44780u_4bit_instruct(1, 0, 0, 1, 1);
-			hd44780u_4bit_instruct(1, 1, 1, 1, 1);
-			break;
-			case 165:
-			case 133:
-			if ( prev == 195 ) {
+		while ( *c ) {
+			switch(*c) {
+				case 'a':
+				case 'A':
+				hd44780u_4bit_instruct(1, 0, 1, 0, 0);
+				hd44780u_4bit_instruct(1, 0, 0, 0, 1);
+				chars_written++;
+				break;
+				case 'b':
+				case 'B':
+				hd44780u_4bit_instruct(1, 0, 1, 0, 0);
+				hd44780u_4bit_instruct(1, 0, 0, 1, 0);
+				chars_written++;
+				break;
+				case 'c':
+				case 'C':
+				hd44780u_4bit_instruct(1, 0, 1, 0, 0);
+				hd44780u_4bit_instruct(1, 0, 0, 1, 1);
+				chars_written++;
+				break;
+				case 'd':
+				case 'D':
+				hd44780u_4bit_instruct(1, 0, 1, 0, 0);
+				hd44780u_4bit_instruct(1, 0, 1, 0, 0);
+				chars_written++;
+				break;
+				case 'e':
+				case 'E':
+				hd44780u_4bit_instruct(1, 0, 1, 0, 0);
+				hd44780u_4bit_instruct(1, 0, 1, 0, 1);
+				chars_written++;
+				break;
+				case 'f':
+				case 'F':
+				hd44780u_4bit_instruct(1, 0, 1, 0, 0);
 				hd44780u_4bit_instruct(1, 0, 1, 1, 0);
-				hd44780u_4bit_instruct(1, 0, 0, 0, 1);
-			}
-			break;
-			case 164:
-			case 132:
-			if ( prev == 195 ) {
+				chars_written++;
+				break;
+				case 'g':
+				case 'G':
+				hd44780u_4bit_instruct(1, 0, 1, 0, 0);
+				hd44780u_4bit_instruct(1, 0, 1, 1, 1);
+				chars_written++;
+				break;
+				case 'h':
+				case 'H':
+				hd44780u_4bit_instruct(1, 0, 1, 0, 0);
+				hd44780u_4bit_instruct(1, 1, 0, 0, 0);
+				chars_written++;
+				break;
+				case 'i':
+				case 'I':
+				hd44780u_4bit_instruct(1, 0, 1, 0, 0);
+				hd44780u_4bit_instruct(1, 1, 0, 0, 1);
+				chars_written++;
+				break;
+				case 'j':
+				case 'J':
+				hd44780u_4bit_instruct(1, 0, 1, 0, 0);
+				hd44780u_4bit_instruct(1, 1, 0, 1, 0);
+				chars_written++;
+				break;
+				case 'k':
+				case 'K':
+				hd44780u_4bit_instruct(1, 0, 1, 0, 0);
+				hd44780u_4bit_instruct(1, 1, 0, 1, 1);
+				chars_written++;
+				break;
+				case 'l':
+				case 'L':
+				hd44780u_4bit_instruct(1, 0, 1, 0, 0);
+				hd44780u_4bit_instruct(1, 1, 1, 0, 0);
+				chars_written++;
+				break;
+				case 'm':
+				case 'M':
+				hd44780u_4bit_instruct(1, 0, 1, 0, 0);
+				hd44780u_4bit_instruct(1, 1, 1, 0, 1);
+				chars_written++;
+				break;
+				case 'n':
+				case 'N':
+				hd44780u_4bit_instruct(1, 0, 1, 0, 0);
 				hd44780u_4bit_instruct(1, 1, 1, 1, 0);
-				hd44780u_4bit_instruct(1, 0, 0, 0, 1);
-			}
-			break;
-			case 182:
-			case 150:
-			if ( prev == 195 ) {
-				hd44780u_4bit_instruct(1, 1, 1, 1, 0);
+				chars_written++;
+				break;
+				case 'o':
+				case 'O':
+				hd44780u_4bit_instruct(1, 0, 1, 0, 0);
 				hd44780u_4bit_instruct(1, 1, 1, 1, 1);
+				chars_written++;
+				break;
+				case 'p':
+				case 'P':
+				hd44780u_4bit_instruct(1, 0, 1, 0, 1);
+				hd44780u_4bit_instruct(1, 0, 0, 0, 0);
+				chars_written++;
+				break;
+				case 'q':
+				case 'Q':
+				hd44780u_4bit_instruct(1, 0, 1, 0, 1);
+				hd44780u_4bit_instruct(1, 0, 0, 0, 1);
+				chars_written++;
+				break;
+				case 'r':
+				case 'R':
+				hd44780u_4bit_instruct(1, 0, 1, 0, 1);
+				hd44780u_4bit_instruct(1, 0, 0, 1, 0);
+				chars_written++;
+				break;
+				case 's':
+				case 'S':
+				hd44780u_4bit_instruct(1, 0, 1, 0, 1);
+				hd44780u_4bit_instruct(1, 0, 0, 1, 1);
+				chars_written++;
+				break;	
+				case 't':
+				case 'T':
+				hd44780u_4bit_instruct(1, 0, 1, 0, 1);
+				hd44780u_4bit_instruct(1, 0, 1, 0, 0);
+				chars_written++;
+				break;
+				case 'u':
+				case 'U':
+				hd44780u_4bit_instruct(1, 0, 1, 0, 1);
+				hd44780u_4bit_instruct(1, 0, 1, 0, 1);
+				chars_written++;
+				break;
+				case 'v':
+				case 'V':
+				hd44780u_4bit_instruct(1, 0, 1, 0, 1);
+				hd44780u_4bit_instruct(1, 0, 1, 1, 0);
+				chars_written++;
+				break;
+				case 'w':
+				case 'W':
+				hd44780u_4bit_instruct(1, 0, 1, 0, 1);
+				hd44780u_4bit_instruct(1, 0, 1, 1, 1);
+				chars_written++;
+				break;
+				case 'x':
+				case 'X':
+				hd44780u_4bit_instruct(1, 0, 1, 0, 1);
+				hd44780u_4bit_instruct(1, 1, 0, 0, 0);
+				chars_written++;
+				break;
+				case 'y':
+				case 'Y':
+				hd44780u_4bit_instruct(1, 0, 1, 0, 1);
+				hd44780u_4bit_instruct(1, 1, 0, 0, 1);
+				chars_written++;
+				break;
+				case 'z':
+				case 'Z':
+				hd44780u_4bit_instruct(1, 0, 1, 0, 1);
+				hd44780u_4bit_instruct(1, 1, 0, 1, 0);
+				chars_written++;
+				break;
+				case '<':
+				hd44780u_4bit_instruct(1, 0, 0, 1, 1);
+				hd44780u_4bit_instruct(1, 1, 1, 0, 0);
+				chars_written++;
+				break;
+				case '1':
+				hd44780u_4bit_instruct(1, 0, 0, 1, 1);
+				hd44780u_4bit_instruct(1, 0, 0, 0, 1);
+				chars_written++;
+				break;
+				case '2':
+				hd44780u_4bit_instruct(1, 0, 0, 1, 1);
+				hd44780u_4bit_instruct(1, 0, 0, 1, 0);
+				chars_written++;
+				break;
+				case '3':
+				hd44780u_4bit_instruct(1, 0, 0, 1, 1);
+				hd44780u_4bit_instruct(1, 0, 0, 1, 1);
+				chars_written++;
+				break;
+				case '4':
+				hd44780u_4bit_instruct(1, 0, 0, 1, 1);
+				hd44780u_4bit_instruct(1, 0, 1, 0, 0);
+				chars_written++;
+				break;
+				case '5':
+				hd44780u_4bit_instruct(1, 0, 0, 1, 1);
+				hd44780u_4bit_instruct(1, 0, 1, 0, 1);
+				chars_written++;
+				break;
+				case '6':
+				hd44780u_4bit_instruct(1, 0, 0, 1, 1);
+				hd44780u_4bit_instruct(1, 0, 1, 1, 0);
+				chars_written++;
+				break;
+				case '7':
+				hd44780u_4bit_instruct(1, 0, 0, 1, 1);
+				hd44780u_4bit_instruct(1, 0, 1, 1, 1);
+				chars_written++;
+				break;
+				case '8':
+				hd44780u_4bit_instruct(1, 0, 0, 1, 1);
+				hd44780u_4bit_instruct(1, 1, 0, 0, 0);
+				chars_written++;
+				break;
+				case '9':
+				hd44780u_4bit_instruct(1, 0, 0, 1, 1);
+				hd44780u_4bit_instruct(1, 1, 0, 0, 1);
+				chars_written++;
+				break;
+				case ' ':
+				hd44780u_4bit_instruct(1, 0, 0, 1, 0);
+				hd44780u_4bit_instruct(1, 0, 0, 0, 0);
+				chars_written++;
+				break;
+				case '!':
+				hd44780u_4bit_instruct(1, 0, 0, 1, 0);
+				hd44780u_4bit_instruct(1, 0, 0, 0, 1);
+				chars_written++;
+				break;
+				case '?':
+				hd44780u_4bit_instruct(1, 0, 0, 1, 1);
+				hd44780u_4bit_instruct(1, 1, 1, 1, 1);
+				chars_written++;
+				break;
+				case 165:
+				case 133:
+				if ( prev == 195 ) {
+					hd44780u_4bit_instruct(1, 0, 1, 1, 0);
+					hd44780u_4bit_instruct(1, 0, 0, 0, 1);
+					chars_written++;
+				}
+				break;
+				case 164:
+				case 132:
+				if ( prev == 195 ) {
+					hd44780u_4bit_instruct(1, 1, 1, 1, 0);
+					hd44780u_4bit_instruct(1, 0, 0, 0, 1);
+					chars_written++;
+				}
+				break;
+				case 182:
+				case 150:
+				if ( prev == 195 ) {
+					hd44780u_4bit_instruct(1, 1, 1, 1, 0);
+					hd44780u_4bit_instruct(1, 1, 1, 1, 1);
+					chars_written++;
+				}
+				break;
+				default:
+				break;
 			}
-			break;
-			default:
-			break;
+
+			prev = *c;
+
+			vTaskDelay(xDelay);
+			++c;
 		}
 
-		prev = *c;
+		message_written = 1;
 
-		vTaskDelay(xDelay);
-		++c;
+		q = chars_written;
+		n = 0;
+		while ( q < chars_limit ) {
+			hd44780u_4bit_instruct(1, 0, 0, 1, 0);
+			hd44780u_4bit_instruct(1, 0, 0, 0, 0);
+			vTaskDelay(xDelay);
+			++q;
+			++n;
+		}
+
+		while ( n != 0 ) {
+			hd44780u_4bit_instruct(0, 0, 0, 0, 1);
+			vTaskDelay(xDelay);
+			hd44780u_4bit_instruct(0, 0, 0, 0, 0);
+			vTaskDelay(xDelay);
+			--n;
+		}
+
+		chars_limit = chars_written;
+
+		xSemaphoreGive(hd44780u_mux);
 	}
-
-	activated = 1;
 
 }
 
 void hd44780u_4bit_shift_display_left()
 {
-	if ( activated ) {
+	if (! activated || !message_written )  
+		return;
+	if ( xSemaphoreTake( hd44780u_mux, portMAX_DELAY ) == pdTRUE ) {
+
 		hd44780u_4bit_instruct(0, 0, 0, 0, 1);
 		vTaskDelay(xDelay);
 		hd44780u_4bit_instruct(0, 1, 0, 0, 0);
 		vTaskDelay(xDelay);
+
+		xSemaphoreGive(hd44780u_mux);
 	}
 }
 
 void hd44780u_4bit_shift_display_right()
 {
-	if ( activated ) {
+	if (! activated || !message_written)
+		return;
+	if ( xSemaphoreTake( hd44780u_mux, portMAX_DELAY ) == pdTRUE ) {
 		hd44780u_4bit_instruct(0, 0, 0, 0, 1);
 		vTaskDelay(xDelay);
 		hd44780u_4bit_instruct(0, 1, 1, 0, 0);
 		vTaskDelay(xDelay);
+
+		xSemaphoreGive(hd44780u_mux);
 	}
 }
 
 void hd44780u_4bit_shift_cursor_left()
 {
-	if ( activated ) {
+	if (! activated || !message_written)
+		return;
+	if ( xSemaphoreTake( hd44780u_mux, portMAX_DELAY ) == pdTRUE ) {
 		hd44780u_4bit_instruct(0, 0, 0, 0, 1);
 		vTaskDelay(xDelay);
 		hd44780u_4bit_instruct(0, 0, 0, 0, 0);
 		vTaskDelay(xDelay);
+
+		xSemaphoreGive(hd44780u_mux);
 	}
 }
 
 void hd44780u_4bit_shift_cursor_right()
 {
-	if ( activated ) {
+	if (! activated || !message_written)
+		return;
+	if ( xSemaphoreTake( hd44780u_mux, portMAX_DELAY ) == pdTRUE ) {
 		hd44780u_4bit_instruct(0, 0, 0, 0, 1);
 		vTaskDelay(xDelay);
 		hd44780u_4bit_instruct(0, 0, 1, 0, 0);
 		vTaskDelay(xDelay);
+
+		xSemaphoreGive(hd44780u_mux);
 	}
 }
 
 static void hd44780u_4bit_instruct(int rs, int db7, int db6, int db5, int db4)
 {
+	if (! activated )
+		return;
 	// Set E high
 	gpio_gp_pin_set(
 		configuration[HD44780U_E].pin.base,
@@ -401,5 +517,6 @@ static void hd44780u_4bit_instruct(int rs, int db7, int db6, int db5, int db4)
 		configuration[HD44780U_E].pin.base,
 		configuration[HD44780U_E].pin.pin,
 		0);
+
 }
 

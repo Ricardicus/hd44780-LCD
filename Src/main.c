@@ -27,8 +27,6 @@
 #include "gpio.h"
 #include "hd44780u.h"
 
-
-
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -274,12 +272,12 @@ void udpate_leds_3()
 /* Shifts the hd44780 display to the left */
 void HD44780u_display_shifter( void * pvParameters )
 {
- TickType_t xDelay = 200 / portTICK_PERIOD_MS;
+  TickType_t xDelay = 300 / portTICK_PERIOD_MS;
 
- while ( 1 ) {
-  vTaskDelay(xDelay);
-  hd44780u_4bit_shift_display_left();
- }
+  while ( 1 ) {
+    vTaskDelay(xDelay);
+    hd44780u_4bit_shift_display_left();
+  }
 }
 
 /* Waits for button click */
@@ -321,9 +319,12 @@ void listener( void * pvParameters )
 
   // Writing a message!
   hd44780u_4bit_write(messages[i++]);
+  vTaskDelay(xDelay);
 
   led_pattern = LED_PATTERN_0;
+  prev_led_pattern = led_pattern;
   while ( 1 ) {
+    vTaskDelay(xDelay);
 
     if ( gpio_gp_pin_get(GPIOB_ADDR, 5) ) {
       led_pattern = LED_PATTERN_2;
@@ -334,12 +335,15 @@ void listener( void * pvParameters )
     if ( prev_led_pattern != led_pattern ) {
       xEventGroupSetBits(xEventGroup, led_pattern);
       prev_led_pattern = led_pattern;
+
+      if ( led_pattern != LED_PATTERN_3 ) {
+        ++i;
+        i = (i) % ( 3 );
+        hd44780u_4bit_write(messages[i]);
+      }
     }
 
-    hd44780u_4bit_write(messages[i++]);
-
-    i = (i) % ( sizeof(messages) / sizeof(*messages) );
-
+    prev_led_pattern = led_pattern;
   }
 }
 
