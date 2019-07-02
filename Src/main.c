@@ -60,7 +60,7 @@ osThreadId defaultTaskHandle;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 void StartDefaultTask(void const * argument);
-void LEDBlink(void *pvParameters);
+void LED_blink(void *pvParameters);
 void update_delay(uint32_t *delay);
 
 /* USER CODE BEGIN PFP */
@@ -271,13 +271,31 @@ void udpate_leds_3()
 
 }
 
-/* Task to be created. */
-void Listener( void * pvParameters )
+/* Shifts the hd44780 display to the left */
+void HD44780u_display_shifter( void * pvParameters )
+{
+ TickType_t xDelay = 200 / portTICK_PERIOD_MS;
+
+ while ( 1 ) {
+  vTaskDelay(xDelay);
+  hd44780u_4bit_shift_display_left();
+ }
+}
+
+/* Waits for button click */
+void listener( void * pvParameters )
 {
   /* The parameter value is expected to be 1 as 1 is passed in the
   pvParameters value in the call to xTaskCreate() below. */
   TickType_t xDelay = 100 / portTICK_PERIOD_MS;
   EventGroupHandle_t xEventGroup = (EventGroupHandle_t) pvParameters;
+  int i = 0;
+
+  const char *messages[] = {
+    "Rickard <3 är bra!",
+    "Han är duktig på detta",
+    "Kolla ett nytt meddelande!"
+  };
 
   int prev_led_pattern = -1;
   int led_pattern = LED_PATTERN_0;
@@ -301,47 +319,11 @@ void Listener( void * pvParameters )
       break;
   }
 
-  // Program the HD44780u
-
-  xDelay = 200 / portTICK_PERIOD_MS; // Interval between instructions
-
-  // Set to 4 bit operation
-  hd44780u_4bit_instruct(0, 0, 0, 1, 0);
-  vTaskDelay(xDelay);
-
-  // Set 4 bit operation and select 1-line display and 5x8 char font
-  hd44780u_4bit_instruct(0, 0, 0, 1, 0);
-  vTaskDelay(xDelay);
-
-  hd44780u_4bit_instruct(0, 0, 0, 0, 0);
-  vTaskDelay(xDelay);
-
-  // Turn on display and cursor
-  hd44780u_4bit_instruct(0, 0, 0, 0, 0);
-  vTaskDelay(xDelay);
-  hd44780u_4bit_instruct(0, 1, 1, 1, 0);
-  vTaskDelay(xDelay);
-
-  // Set mode to increment the address by one and to shift the cursor to the right after write
-  hd44780u_4bit_instruct(0, 0, 0, 0, 0);
-  vTaskDelay(xDelay);
-  hd44780u_4bit_instruct(0, 0, 1, 1, 0);
-  vTaskDelay(xDelay);
-
-  // Return home
-  hd44780u_4bit_instruct(0, 0, 0, 0, 0);
-  vTaskDelay(xDelay);
-  hd44780u_4bit_instruct(0, 0, 0, 1, 0);
-  vTaskDelay(xDelay);
-
   // Writing a message!
-  hd44780u_4bit_write("Rickard <3 är bra!");
-
-  xDelay = 100 / portTICK_PERIOD_MS;
+  hd44780u_4bit_write(messages[i++]);
 
   led_pattern = LED_PATTERN_0;
   while ( 1 ) {
-    vTaskDelay(xDelay);
 
     if ( gpio_gp_pin_get(GPIOB_ADDR, 5) ) {
       led_pattern = LED_PATTERN_2;
@@ -354,14 +336,15 @@ void Listener( void * pvParameters )
       prev_led_pattern = led_pattern;
     }
 
-//    vTaskDelay(xDelay);
-    hd44780u_4bit_shift_left();
+    hd44780u_4bit_write(messages[i++]);
+
+    i = (i) % ( sizeof(messages) / sizeof(*messages) );
 
   }
 }
 
 /* Task to be created. */
-void LEDBlink( void * pvParameters )
+void LED_blink( void * pvParameters )
 {
   /* The parameter value is expected to be 1 as 1 is passed in the
   pvParameters value in the call to xTaskCreate() below. */
@@ -449,9 +432,8 @@ void update_delay(uint32_t *delay)
 }
 
 /* Function that creates a task. */
-int spawnGPIOApp( void )
+int spawn_GPIO_App( void )
 {
-  BaseType_t xReturned;
   TaskHandle_t xHandle = NULL;
   EventGroupHandle_t xCreatedEventGroup;
 
@@ -565,9 +547,6 @@ int spawnGPIOApp( void )
     }
   };
 
-  // Init the GPIO pins
-  init_gpio_pins(settings);
-
   hd44780u_config_t hd447_settings[] =
   {
     {
@@ -619,35 +598,38 @@ int spawnGPIOApp( void )
 
   };
 
+  // Init the GPIO pins
+  init_gpio_pins(settings);
+
   // Init the hd44780u interface
   hd44780u_init_4bit_op(hd447_settings);
 
   /* Create the task, storing the handle. */
-  xReturned = xTaskCreate(
-    LEDBlink,        /* Function that implements the task. */
+  xTaskCreate(
+    LED_blink,        /* Function that implements the task. */
     "LED blinker!",   /* Text name for the task. */
     128,              /* Stack size in words, not bytes. */
     xCreatedEventGroup,   /* Parameter passed into the task. */
     tskIDLE_PRIORITY, /* Priority at which the task is created. */
     &xHandle );       /* Used to pass out the created task's handle. */
 
-  if( xReturned == pdPASS )
-  {
-    /* It worked! */
-
-    xReturned = xTaskCreate(
-      Listener,        /* Function that implements the task. */
+  xTaskCreate(
+      listener,        /* Function that implements the task. */
       "LED blinker alterer!",   /* Text name for the task. */
       128,              /* Stack size in words, not bytes. */
       xCreatedEventGroup,   /* Parameter passed into the task. */
       tskIDLE_PRIORITY, /* Priority at which the task is created. */
       &xHandle );       /* Used to pass out the created task's handle. */
 
+  xTaskCreate(
+      HD44780u_display_shifter,        /* Function that implements the task. */
+      "hd44780u display shifter!",   /* Text name for the task. */
+      128,              /* Stack size in words, not bytes. */
+      xCreatedEventGroup,   /* Parameter passed into the task. */
+      tskIDLE_PRIORITY, /* Priority at which the task is created. */
+      &xHandle );       /* Used to pass out the created task's handle. */
 
-    return 0;
-  }
-
-  return 1;
+  return 0;
 }
 
 /* USER CODE END 0 */
@@ -715,7 +697,7 @@ int main(void)
 
   if ( xCreatedEventGroup != NULL ) {
 
-    spawnGPIOApp();
+    spawn_GPIO_App();
 
   }
 

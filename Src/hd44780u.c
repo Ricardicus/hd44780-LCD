@@ -1,12 +1,23 @@
 #include "hd44780u.h"
 
-hd44780u_config_t configuration[6];
+/*
+* This interface only works for one HD44780u display
+*/
 
-void hd44780u_init_4bit_op(hd44780u_config_t *configs)
+static hd44780u_config_t configuration[6];
+static TickType_t xDelay;
+static int activated = 0;
+
+int hd44780u_init_4bit_op(hd44780u_config_t *configs)
 {
 	hd44780u_config_t config = configs[0];
 	int i = 0;
 
+	for (; i < sizeof(configuration) / sizeof(*configuration); i++ ) {
+		configuration[i].type = -1;
+	}
+
+	i = 0;
 	while ( config.type >= 0 ) {
 
 		switch ( config.type ) {
@@ -36,13 +47,65 @@ void hd44780u_init_4bit_op(hd44780u_config_t *configs)
 		config = configs[i];
 	}
 
+	i = 0;
+	for (; i < sizeof(configuration) / sizeof(*configuration); i++ ) {
+		if ( -1 == configuration[i].type ) {
+			return 1;
+		}
+	}
+
+	// Program the HD44780u
+	xDelay = HD44780U_BUSY_DELAY / portTICK_PERIOD_MS; // Interval between instructions
+
+	// Set to 4 bit operation
+	hd44780u_4bit_instruct(0, 0, 0, 1, 0);
+	vTaskDelay(xDelay);
+
+	// Set 4 bit operation and select 1-line display and 5x8 char font
+	hd44780u_4bit_instruct(0, 0, 0, 1, 0);
+	vTaskDelay(xDelay);
+
+	hd44780u_4bit_instruct(0, 0, 0, 0, 0);
+	vTaskDelay(xDelay);
+
+	// Turn on display and cursor
+	hd44780u_4bit_instruct(0, 0, 0, 0, 0);
+	vTaskDelay(xDelay);
+	hd44780u_4bit_instruct(0, 1, 1, 1, 0);
+	vTaskDelay(xDelay);
+
+	// Set mode to increment the address by one and to shift the cursor to the right after write
+	hd44780u_4bit_instruct(0, 0, 0, 0, 0);
+	vTaskDelay(xDelay);
+	hd44780u_4bit_instruct(0, 0, 1, 1, 0);
+	vTaskDelay(xDelay);
+
+	// Return home
+	hd44780u_4bit_instruct(0, 0, 0, 0, 0);
+	vTaskDelay(xDelay);
+	hd44780u_4bit_instruct(0, 0, 0, 1, 0);
+	vTaskDelay(xDelay);
+
+	return 0;
+
+}
+
+void hd44780u_4bit_return_home()
+{
+  // Return home
+  hd44780u_4bit_instruct(0, 0, 0, 0, 0);
+  vTaskDelay(xDelay);
+  hd44780u_4bit_instruct(0, 0, 0, 1, 0);
+  vTaskDelay(xDelay);
 }
 
 void hd44780u_4bit_write(const char * message) 
 {
 	const char *c = message;
 	static int prev = 0;
-	TickType_t xDelay = 100 / portTICK_PERIOD_MS;
+
+	if ( activated ) 
+		hd44780u_4bit_return_home();
 
 	while ( *c ) {
 		switch(*c) {
@@ -259,27 +322,51 @@ void hd44780u_4bit_write(const char * message)
 		++c;
 	}
 
+	activated = 1;
+
 }
 
-void hd44780u_4bit_shift_left()
+void hd44780u_4bit_shift_display_left()
 {
-	TickType_t xDelay = 500 / portTICK_PERIOD_MS;
-	hd44780u_4bit_instruct(0, 0, 0, 0, 1);
-	vTaskDelay(xDelay);
-	hd44780u_4bit_instruct(0, 1, 0, 0, 0);
-	vTaskDelay(xDelay);
+	if ( activated ) {
+		hd44780u_4bit_instruct(0, 0, 0, 0, 1);
+		vTaskDelay(xDelay);
+		hd44780u_4bit_instruct(0, 1, 0, 0, 0);
+		vTaskDelay(xDelay);
+	}
 }
 
-void hd44780u_4bit_shift_right()
+void hd44780u_4bit_shift_display_right()
 {
-	TickType_t xDelay = 500 / portTICK_PERIOD_MS;
-	hd44780u_4bit_instruct(0, 0, 0, 0, 1);
-	vTaskDelay(xDelay);
-	hd44780u_4bit_instruct(0, 1, 1, 0, 0);
-	vTaskDelay(xDelay);
+	if ( activated ) {
+		hd44780u_4bit_instruct(0, 0, 0, 0, 1);
+		vTaskDelay(xDelay);
+		hd44780u_4bit_instruct(0, 1, 1, 0, 0);
+		vTaskDelay(xDelay);
+	}
 }
 
-void hd44780u_4bit_instruct(int rs, int db7, int db6, int db5, int db4)
+void hd44780u_4bit_shift_cursor_left()
+{
+	if ( activated ) {
+		hd44780u_4bit_instruct(0, 0, 0, 0, 1);
+		vTaskDelay(xDelay);
+		hd44780u_4bit_instruct(0, 0, 0, 0, 0);
+		vTaskDelay(xDelay);
+	}
+}
+
+void hd44780u_4bit_shift_cursor_right()
+{
+	if ( activated ) {
+		hd44780u_4bit_instruct(0, 0, 0, 0, 1);
+		vTaskDelay(xDelay);
+		hd44780u_4bit_instruct(0, 0, 1, 0, 0);
+		vTaskDelay(xDelay);
+	}
+}
+
+static void hd44780u_4bit_instruct(int rs, int db7, int db6, int db5, int db4)
 {
 	// Set E high
 	gpio_gp_pin_set(
