@@ -1,0 +1,4 @@
+*.ioc
+build/*
+Readme
+*.bin
