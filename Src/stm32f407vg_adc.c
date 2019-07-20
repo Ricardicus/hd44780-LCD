@@ -1,16 +1,35 @@
 #include "stm32f407vg_adc.h"
 
-#ifdef USE_ADC_ISR
 static volatile int32_t isr_adc_channel_values[ADC_LAST+1]; // Used by the ISR
 static volatile int32_t isr_adc_regular_channel_count[3] = {0,0,0}; // Used by the ISR
 static volatile int32_t isr_adc_channels[3][16]; // Used by the ISR
-#else 
-static volatile int32_t adc_regular_channel_count[3] = {0,0,0};
-static volatile int32_t adc_channel_values[ADC_LAST+1];
-static volatile int32_t adc_channels[3][16];
-#endif
+static volatile int32_t isr_adc_regular_channel_idx[3] = {0,0,0}; // Used by the ISR
 
-extern volatile int debug_int;
+void ADC_IRQHandler()
+{
+	volatile adc_conf_t* conf;
+	int i = 0;
+	int32_t channel;
+	int32_t adcs[3] = {
+		ADC_BASE_ADDRESS + ADC1_OFFSET,
+		ADC_BASE_ADDRESS + ADC2_OFFSET,
+		ADC_BASE_ADDRESS + ADC3_OFFSET
+	};
+
+	while ( i < 3 ) {
+		conf = (volatile adc_conf_t*) adcs[i];
+
+		if ( conf->sr & BIT(1) ) {
+			channel = isr_adc_channels[i][isr_adc_regular_channel_idx[i]];
+
+			isr_adc_regular_channel_idx[i] = ((isr_adc_regular_channel_idx[i] + 1) & 15 ) % isr_adc_regular_channel_count[i];
+
+			isr_adc_channel_values[channel] = conf->dr;
+		}
+		++i;
+	}
+
+}
 
 int adc_init() 
 {
@@ -27,11 +46,14 @@ int adc_init()
 		ADC_BASE_ADDRESS + ADC3_OFFSET
 	};
 
-#ifdef USE_ADC_ISR
 	memset(isr_adc_channel_values, 0, sizeof(isr_adc_channel_values));
-#else
-	memset(adc_channel_values, 0, sizeof(adc_channel_values));
-#endif
+	memset(isr_adc_regular_channel_idx, 0, sizeof(isr_adc_regular_channel_idx));
+	memset(isr_adc_regular_channel_count, 0, sizeof(isr_adc_regular_channel_count));
+
+  	__enable_irq();
+
+  	NVIC_SetPriority(ADC_IRQn, 10);
+  	NVIC_EnableIRQ(ADC_IRQn);
 
 	adc_common_conf = (adc_common_conf_t*) (ADC_BASE_ADDRESS + ADC_COMMON_OFFSET);
 
@@ -57,13 +79,13 @@ int adc_init()
 		// Power on the ADC
 		conf->cr2 |= BIT(0); // ADON
 		// Give it some time
-		busy_wait(5000);
+		busy_wait(50000);
 		// Set alignment
 		conf->cr2 &= ~BIT(11); // ALIGN (right alignment)
 		// Set SCAN mode
 		conf->cr1 |= BIT(8); // SCAN
-		// Interrupt disable for EOC
-		conf->cr1 &= ~BIT(5); // EOCIE
+		// Interrupt enable for EOC
+		conf->cr1 |= BIT(5); // EOCIE
 		// The EOC bit is set at the end of each regular conversion
 		conf->cr2 |= BIT(10); // EOCS
 		// Overrun interrupts disabled
@@ -88,14 +110,8 @@ void adc_start_conversion()
 		ADC_BASE_ADDRESS + ADC3_OFFSET
 	};
 
-	debug_int = 6;
-
 	while ( i < 3 ) {
-#ifdef USE_ADC_ISR
 		int len = isr_adc_regular_channel_count[i];
-#else
-		int len = adc_regular_channel_count[i];
-#endif
 		n = 0;
 
 		while ( n < len ) {
@@ -103,11 +119,7 @@ void adc_start_conversion()
 
 			conf = (volatile adc_conf_t*)adcs[i];
 
-#ifdef USE_ADC_ISR
 			channel = isr_adc_channels[i][n] + 19*i;
-#else
-			channel = adc_channels[i][n] + 19*i;
-#endif
 
 			// Start conversion
 			conf->cr2 |= BIT(30);
@@ -116,27 +128,12 @@ void adc_start_conversion()
 				// wait until conversion starts
 			}
 
-#ifndef USE_ADC_ISR
-			while ( !(conf->sr & BIT(1))  ) {
-				// wait until conversion finished
-				debug_int++;
-			}
-			val = conf->dr;
-
-			debug_int = val;
-
-			adc_channel_values[channel] = val;
-#endif
-
 			++n;
 		}
 
 		++i;
 	}
 
-	NVIC_TRIGGER_INT(18);
-
-//	debug_int = 10;
 }
 
 float adc_read_value(int ch)
@@ -147,11 +144,7 @@ float adc_read_value(int ch)
 
 	if ( ch > ADC_LAST )
 		return 0.0;
-#ifdef USE_ADC_ISR
 	val = isr_adc_channel_values[ch];
-#else
-	val = adc_channel_values[ch];
-#endif
 
 	value = (float)val;
 
@@ -188,11 +181,9 @@ int adc_configure_channels(adc_channels_t *channels)
 			conf = (adc_conf_t*) ADC_BASE_ADDRESS + ADC3_OFFSET;
 			channel_select = 2;
 		}
-#ifdef USE_ADC_ISR
+
 		isr_adc_channels[channel_select][sequence_lengths[channel_select]] = adcn_chx_x;
-#else
-		adc_channels[channel_select][sequence_lengths[channel_select]] = adcn_chx_x;
-#endif
+
 		if ( sequence_lengths[channel_select] < 6 ) {
 			seq_reg = &conf->sqr[2];
 		} else if ( sequence_lengths[channel_select] < 12 ) {
@@ -214,11 +205,7 @@ int adc_configure_channels(adc_channels_t *channels)
 
 		sequence_lengths[channel_select]++;
 
-#ifdef USE_ADC_ISR
 		isr_adc_regular_channel_count[channel_select] = sequence_lengths[channel_select];
-#else 
-		adc_regular_channel_count[channel_select] = sequence_lengths[channel_select];
-#endif
 
 		// Update the channel length
 		conf->sqr[0] |= ( (sequence_lengths[channel_select]-1) << 20 );

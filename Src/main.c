@@ -55,9 +55,6 @@ void update_delay(uint32_t *delay);
 
 static volatile int32_t adc_temperature = 0;
 
-volatile int debug_int = 0;
-volatile int debug_isr_int = 0;
-
 void udpate_leds_0()
 {
   static int count = 0;
@@ -276,11 +273,6 @@ void ADC_converter( void * pvParameters )
 
   adc_channels_t adc_conf;
 
-  debug_int = 1;
-  adc_init();
-
-  debug_int = 2;
-
   // Give it some time
   vTaskDelay(xDelay);
 
@@ -289,16 +281,18 @@ void ADC_converter( void * pvParameters )
   adc_conf.chan[0] = ADC1_IN17; // VREF+
   adc_conf.chan[1] = ADC1_IN16; // Temperature sensor
 
+  adc_init();
   adc_configure_channels(&adc_conf);
-
-  debug_int = 3;
 
   while ( 1 ) {
     int32_t refint;
     int32_t temp_sens;
     float v_sens_mv_out;
+
+    adc_start_conversion(); // Start a conversion (update values)
+
     vTaskDelay(xDelay);
-    adc_start_conversion(); // Start a conversion
+
     refint = adc_read_value(adc_conf.chan[0]);
     temp_sens = adc_read_value(adc_conf.chan[1]);
 
@@ -371,40 +365,14 @@ void listener( void * pvParameters )
 
         if ( i == 3 ) {
 
-          snprintf(messages[i], 55, "tmp:%ld (C)", adc_temperature);
+          snprintf(messages[i], 55, "Temperature: %ld (C)", adc_temperature);
         }
 
         hd44780u_4bit_write(messages[i]);
-
-        if ( i == 3 )
-          break;
       }
     }
   }
 
-  while ( 1 ) {
-    vTaskDelay(xDelay);
-
-    if ( gpio_gp_pin_get(GPIOB_ADDR, 5) ) {
-      led_pattern = LED_PATTERN_2;
-    } else {
-      led_pattern = LED_PATTERN_3;
-    }
-
-    if ( prev_led_pattern != led_pattern ) {
-      xEventGroupSetBits(xEventGroup, led_pattern);
-      prev_led_pattern = led_pattern;
-
-      if ( led_pattern != LED_PATTERN_3 ) {
-        snprintf(messages[i], 55, "tmp:%ld (C)", adc_temperature);
-
-        hd44780u_4bit_write(messages[i]);
-      }
-
-    }
-
-    prev_led_pattern = led_pattern;
-  }
 }
 
 /* Task to be created. */

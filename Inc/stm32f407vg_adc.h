@@ -12,6 +12,8 @@
 #include "gpio.h" // Heavily reliant on the the GPIO interface
 #include "utils.h"
 #include "nvic.h"
+#include "cmsis_os.h"
+#include "stm32f4xx.h"
 
 #include <string.h>
 
@@ -91,7 +93,6 @@
 #define ADC_SAMPLE_TIME_112_CYCLES (BIT(2) + BIT(0))
 #define ADC_SAMPLE_TIME_144_CYCLES (BIT(2) + BIT(1))
 #define ADC_SAMPLE_TIME_480_CYCLES (BIT(2) + BIT(1) + BIT(0))
-
 
 // VSENSE is input to ADC1_IN16 for the STM23F40x and STM32F41x devices and 
 // to ADC1_IN18 for the STM32F42x and STM32F43x devices.
