@@ -2,6 +2,7 @@
 #define HD44780U_H
 
 #include "gpio.h"
+#include "utils.h"
 #include "cmsis_os.h"
 #include <inttypes.h>
 
@@ -12,7 +13,7 @@
 #define HD44780U_E               4
 #define HD44780U_RS              5
 
-#define HD44780U_BUSY_DELAY      200
+#define HD44780U_BUSY_DELAY      50
 
 typedef struct hd44780u_pin {
 	int pin;

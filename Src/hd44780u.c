@@ -13,14 +13,6 @@ static volatile int message_written = 0;
 
 static SemaphoreHandle_t hd44780u_mux;
 
-static unsigned int busy_wait(unsigned int delay)
-{
-	unsigned int d = 0;
-	while ( d < delay )
-		++d;
-	return d;
-}
-
 int hd44780u_init_4bit_op(hd44780u_config_t *configs)
 {
 	hd44780u_config_t config = configs[0];
@@ -74,7 +66,7 @@ int hd44780u_init_4bit_op(hd44780u_config_t *configs)
 	}
 
 	// Program the HD44780u
-	xDelay = HD44780U_BUSY_DELAY / portTICK_PERIOD_MS; // Interval between instructions
+	xDelay = HD44780U_BUSY_DELAY; //; / portTICK_PERIOD_MS; // Interval between instructions
 
 	// Set to 4 bit operation
 	hd44780u_4bit_instruct(0, 0, 0, 1, 0);
@@ -304,6 +296,26 @@ void hd44780u_4bit_write(const char * message)
 				hd44780u_4bit_instruct(1, 1, 1, 0, 0);
 				chars_written++;
 				break;
+				case '.':
+				hd44780u_4bit_instruct(1, 0, 0, 1, 0);
+				hd44780u_4bit_instruct(1, 1, 1, 1, 0);
+				chars_written++;
+				break;
+				case '(':
+				hd44780u_4bit_instruct(1, 0, 0, 1, 0);
+				hd44780u_4bit_instruct(1, 1, 0, 0, 0);
+				chars_written++;
+				break;
+				case ')':
+				hd44780u_4bit_instruct(1, 0, 0, 1, 0);
+				hd44780u_4bit_instruct(1, 1, 0, 0, 1);
+				chars_written++;
+				break;
+				case '0':
+				hd44780u_4bit_instruct(1, 0, 0, 1, 1);
+				hd44780u_4bit_instruct(1, 0, 0, 0, 0);
+				chars_written++;
+				break;
 				case '1':
 				hd44780u_4bit_instruct(1, 0, 0, 1, 1);
 				hd44780u_4bit_instruct(1, 0, 0, 0, 1);
@@ -362,6 +374,31 @@ void hd44780u_4bit_write(const char * message)
 				case '?':
 				hd44780u_4bit_instruct(1, 0, 0, 1, 1);
 				hd44780u_4bit_instruct(1, 1, 1, 1, 1);
+				chars_written++;
+				break;
+				case '=':
+				hd44780u_4bit_instruct(1, 0, 0, 1, 1);
+				hd44780u_4bit_instruct(1, 1, 1, 0, 1);
+				chars_written++;
+				break;
+				case '-':
+				hd44780u_4bit_instruct(1, 1, 0, 1, 1);
+				hd44780u_4bit_instruct(1, 0, 0, 0, 0);
+				chars_written++;
+				break;
+				case '_':
+				hd44780u_4bit_instruct(1, 0, 1, 0, 1);
+				hd44780u_4bit_instruct(1, 1, 1, 1, 1);
+				chars_written++;
+				break;
+				case ',':
+				hd44780u_4bit_instruct(1, 0, 0, 1, 0);
+				hd44780u_4bit_instruct(1, 1, 1, 0, 0);
+				chars_written++;
+				break;
+				case ':':
+				hd44780u_4bit_instruct(1, 0, 0, 1, 1);
+				hd44780u_4bit_instruct(1, 1, 0, 1, 0);
 				chars_written++;
 				break;
 				case 165:

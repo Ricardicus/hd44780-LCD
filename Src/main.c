@@ -37,6 +37,7 @@
 /* Private includes ----------------------------------------------------------*/
 #include "gpio.h"
 #include "hd44780u.h"
+#include "stm32f407vg_adc.h"
 
 #define LED_PATTERN_0            BIT(0)
 #define LED_PATTERN_1            BIT(1)
@@ -51,6 +52,11 @@ void SystemClock_Config(void);
 void StartDefaultTask(void const * argument);
 void LED_blink(void *pvParameters);
 void update_delay(uint32_t *delay);
+
+static volatile int32_t adc_temperature = 0;
+
+volatile int debug_int = 0;
+volatile int debug_isr_int = 0;
 
 void udpate_leds_0()
 {
@@ -263,6 +269,47 @@ void HD44780u_display_shifter( void * pvParameters )
   }
 }
 
+/* Get new values in the ADC (used to read the temperature) */
+void ADC_converter( void * pvParameters )
+{
+  TickType_t xDelay = 500 / portTICK_PERIOD_MS;
+
+  adc_channels_t adc_conf;
+
+  debug_int = 1;
+  adc_init();
+
+  debug_int = 2;
+
+  // Give it some time
+  vTaskDelay(xDelay);
+
+  adc_conf.len = 2;
+  adc_conf.sampling_rate = ADC_SAMPLE_TIME_480_CYCLES;
+  adc_conf.chan[0] = ADC1_IN17; // VREF+
+  adc_conf.chan[1] = ADC1_IN16; // Temperature sensor
+
+  adc_configure_channels(&adc_conf);
+
+  debug_int = 3;
+
+  while ( 1 ) {
+    int32_t refint;
+    int32_t temp_sens;
+    float v_sens_mv_out;
+    vTaskDelay(xDelay);
+    adc_start_conversion(); // Start a conversion
+    refint = adc_read_value(adc_conf.chan[0]);
+    temp_sens = adc_read_value(adc_conf.chan[1]);
+
+    v_sens_mv_out = (float) (temp_sens / (refint * 1.0)) * TEMP_VREF_TYPICAL;
+
+    adc_temperature = (int32_t)  (  (v_sens_mv_out - TEMP_SENSOR_VOLTAGE_MV_AT_25) / TEMP_SENSOR_AVG_SLOPE_MV_PER_CELSIUS ) + 25 ;
+  }
+}
+
+char messages[4][40];
+
 /* Waits for button click */
 void listener( void * pvParameters )
 {
@@ -272,11 +319,10 @@ void listener( void * pvParameters )
   EventGroupHandle_t xEventGroup = (EventGroupHandle_t) pvParameters;
   int i = 0;
 
-  const char *messages[] = {
-    "Rickard <3 är bra!",
-    "Han är duktig på detta",
-    "Kolla ett nytt meddelande!"
-  };
+  snprintf(messages[0],sizeof(messages[0]), "Rickard <3 är bra!");
+  snprintf(messages[1],sizeof(messages[1]), "Han är duktig på detta");
+  snprintf(messages[2],sizeof(messages[2]), "Kolla ett nytt meddelande!");
+  snprintf(messages[3],sizeof(messages[3]), "------......------");
 
   int prev_led_pattern = -1;
   int led_pattern = LED_PATTERN_0;
@@ -321,9 +367,40 @@ void listener( void * pvParameters )
 
       if ( led_pattern != LED_PATTERN_3 ) {
         ++i;
-        i = (i) % ( 3 );
+        i = (i) % ( 4 );
+
+        if ( i == 3 ) {
+
+          snprintf(messages[i], 55, "tmp:%ld (C)", adc_temperature);
+        }
+
+        hd44780u_4bit_write(messages[i]);
+
+        if ( i == 3 )
+          break;
+      }
+    }
+  }
+
+  while ( 1 ) {
+    vTaskDelay(xDelay);
+
+    if ( gpio_gp_pin_get(GPIOB_ADDR, 5) ) {
+      led_pattern = LED_PATTERN_2;
+    } else {
+      led_pattern = LED_PATTERN_3;
+    }
+
+    if ( prev_led_pattern != led_pattern ) {
+      xEventGroupSetBits(xEventGroup, led_pattern);
+      prev_led_pattern = led_pattern;
+
+      if ( led_pattern != LED_PATTERN_3 ) {
+        snprintf(messages[i], 55, "tmp:%ld (C)", adc_temperature);
+
         hd44780u_4bit_write(messages[i]);
       }
+
     }
 
     prev_led_pattern = led_pattern;
@@ -608,6 +685,14 @@ int spawn_GPIO_App( void )
   xTaskCreate(
       HD44780u_display_shifter,        /* Function that implements the task. */
       "hd44780u display shifter!",   /* Text name for the task. */
+      128,              /* Stack size in words, not bytes. */
+      xCreatedEventGroup,   /* Parameter passed into the task. */
+      tskIDLE_PRIORITY, /* Priority at which the task is created. */
+      &xHandle );       /* Used to pass out the created task's handle. */
+
+  xTaskCreate(
+      ADC_converter,        /* Function that implements the task. */
+      "ADC converter",   /* Text name for the task. */
       128,              /* Stack size in words, not bytes. */
       xCreatedEventGroup,   /* Parameter passed into the task. */
       tskIDLE_PRIORITY, /* Priority at which the task is created. */
