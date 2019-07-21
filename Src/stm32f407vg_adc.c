@@ -45,10 +45,10 @@ int adc_init()
 	memset(isr_adc_regular_channel_idx, 0, sizeof(isr_adc_regular_channel_idx));
 	memset(isr_adc_regular_channel_count, 0, sizeof(isr_adc_regular_channel_count));
 
-  	__enable_irq();
+	ENABLE_IRQ()
 
-  	NVIC_SetPriority(ADC_IRQn, 10);
-  	NVIC_EnableIRQ(ADC_IRQn);
+  	NVIC_SET_PRIO(18, 10);
+  	NVIC_ENABLE(18);
 
 	adc_common_conf = (adc_common_conf_t*) (ADC_BASE_ADDRESS + ADC_COMMON_OFFSET);
 
@@ -95,7 +95,6 @@ int adc_init()
 void adc_start_conversion()
 {
 	volatile adc_conf_t* conf;
-	int32_t channel = 0;
 	int32_t i = 0;
 	int32_t n = 0;
 
@@ -104,11 +103,8 @@ void adc_start_conversion()
 		n = 0;
 
 		while ( n < len ) {
-			int32_t val; 
 
 			conf = (volatile adc_conf_t*)adcs[i];
-
-			channel = isr_adc_channels[i][n] + 19*i;
 
 			// Start conversion
 			conf->cr2 |= BIT(30);
