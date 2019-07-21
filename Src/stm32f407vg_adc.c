@@ -127,8 +127,9 @@ float adc_read_value(int ch)
 
 	int32_t val;
 
-	if ( ch > ADC_LAST )
+	if ( ch > ADC_LAST || ch < 0 )
 		return 0.0;
+
 	val = isr_adc_channel_values[ch];
 
 	value = (float)val;
