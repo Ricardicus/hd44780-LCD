@@ -100,9 +100,8 @@ void adc_start_conversion()
 
 	while ( i < 3 ) {
 		int len = isr_adc_regular_channel_count[i];
-		n = 0;
 
-		while ( n < len ) {
+		if ( len > 0 ) {
 
 			conf = (volatile adc_conf_t*)adcs[i];
 
@@ -113,7 +112,6 @@ void adc_start_conversion()
 				// wait until conversion starts
 			}
 
-			++n;
 		}
 
 		++i;
