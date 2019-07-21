@@ -5,16 +5,17 @@ static volatile int32_t isr_adc_regular_channel_count[3] = {0,0,0}; // Used by t
 static volatile int32_t isr_adc_channels[3][16]; // Used by the ISR
 static volatile int32_t isr_adc_regular_channel_idx[3] = {0,0,0}; // Used by the ISR
 
+static const int32_t adcs[3] = {
+	ADC_BASE_ADDRESS + ADC1_OFFSET,
+	ADC_BASE_ADDRESS + ADC2_OFFSET,
+	ADC_BASE_ADDRESS + ADC3_OFFSET
+};
+
 void ADC_IRQHandler()
 {
 	volatile adc_conf_t* conf;
 	int i = 0;
 	int32_t channel;
-	int32_t adcs[3] = {
-		ADC_BASE_ADDRESS + ADC1_OFFSET,
-		ADC_BASE_ADDRESS + ADC2_OFFSET,
-		ADC_BASE_ADDRESS + ADC3_OFFSET
-	};
 
 	while ( i < 3 ) {
 		conf = (volatile adc_conf_t*) adcs[i];
@@ -39,12 +40,6 @@ int adc_init()
 	int32_t *reg;
 	int status = 0;
 	int i = 0;
-
-	int32_t adcs[3] = {
-		ADC_BASE_ADDRESS + ADC1_OFFSET,
-		ADC_BASE_ADDRESS + ADC2_OFFSET,
-		ADC_BASE_ADDRESS + ADC3_OFFSET
-	};
 
 	memset(isr_adc_channel_values, 0, sizeof(isr_adc_channel_values));
 	memset(isr_adc_regular_channel_idx, 0, sizeof(isr_adc_regular_channel_idx));
@@ -103,12 +98,6 @@ void adc_start_conversion()
 	int32_t channel = 0;
 	int32_t i = 0;
 	int32_t n = 0;
-
-	int32_t adcs[3] = {
-		ADC_BASE_ADDRESS + ADC1_OFFSET,
-		ADC_BASE_ADDRESS + ADC2_OFFSET,
-		ADC_BASE_ADDRESS + ADC3_OFFSET
-	};
 
 	while ( i < 3 ) {
 		int len = isr_adc_regular_channel_count[i];
